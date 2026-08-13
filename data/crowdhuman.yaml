@@ -1,0 +1,16 @@
+# CrowdHuman dataset for YOLOv7/SIAV2 training.
+#
+# Expected YOLO layout:
+#   F:/datasets/CrowdHuman/images/train
+#   F:/datasets/CrowdHuman/images/val
+#   F:/datasets/CrowdHuman/labels/train
+#   F:/datasets/CrowdHuman/labels/val
+#
+# If your converted CrowdHuman dataset is elsewhere, change only `path`.
+path: F:/datasets/CrowdHuman
+train: images/train
+val: images/val
+test: images/val
+
+nc: 1
+names: ['person']
