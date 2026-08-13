@@ -77,7 +77,7 @@ run_one() {
     --onnx="$onnx" \
     --saveEngine="$engine" \
     "${precision_args[@]}" \
-    --workspace="$WORKSPACE" \
+    --memPoolSize="workspace:${WORKSPACE}M" \
     --builderOptimizationLevel=5 \
     --profilingVerbosity=detailed \
     --skipInference \
