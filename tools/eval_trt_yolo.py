@@ -36,13 +36,16 @@ def nms(boxes, scores, classes, iou_thr=0.65):
     keep = []
     for c in np.unique(classes):
         ids = np.where(classes == c)[0]
-        order = ids[np.argsort(scores[ids])[::-1]]
-        while len(order):
-            i = order[0]
-            keep.append(i)
-            if len(order) == 1:
-                break
-            order = order[1:][iou_one(boxes[i], boxes[order[1:]]) < iou_thr]
+        # OpenCV's native implementation avoids the quadratic Python loop
+        # over dense low-confidence candidates.
+        b = boxes[ids]
+        rects = np.column_stack((b[:, 0], b[:, 1],
+                                 np.maximum(0, b[:, 2] - b[:, 0]),
+                                 np.maximum(0, b[:, 3] - b[:, 1]))).tolist()
+        selected = cv2.dnn.NMSBoxes(rects, scores[ids].astype(float).tolist(),
+                                    0.0, float(iou_thr))
+        if len(selected):
+            keep.extend(ids[np.asarray(selected).reshape(-1)].tolist())
     return np.asarray(keep, dtype=np.int64)
 
 
@@ -105,7 +108,7 @@ class Engine:
         return self.host_out.reshape(self.out_shape).copy(), (time.perf_counter() - t0) * 1000
 
 
-def collect_predictions(engine, images, conf, nms_iou, size):
+def collect_predictions(engine, images, conf, nms_iou, size, max_candidates=3000):
     preds, times = [], []
     for idx, path in enumerate(images):
         # cv2.imread on Windows may fail for non-ASCII mapped-drive paths.
@@ -125,6 +128,12 @@ def collect_predictions(engine, images, conf, nms_iou, size):
         score = obj * cls[np.arange(len(cls)), ci]
         keep = score >= conf
         xywh, score, ci = xywh[keep], score[keep], ci[keep]
+        # At low confidence (needed for AP), a dense YOLO output can contain
+        # tens of thousands of candidates. Bound CPU NMS work while retaining
+        # the highest-scoring candidates, matching the practical detector cap.
+        if len(score) > max_candidates:
+            top = np.argpartition(score, -max_candidates)[-max_candidates:]
+            xywh, score, ci = xywh[top], score[top], ci[top]
         if len(xywh):
             boxes = np.empty_like(xywh)
             boxes[:, 0] = xywh[:, 0] - xywh[:, 2] / 2
@@ -152,7 +161,12 @@ def metrics(images, preds, label_dir, ious=(0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8
         im = cv2.imdecode(raw, cv2.IMREAD_COLOR)
         h, w = im.shape[:2]
         gt.append(load_labels(label_dir / p.name, w, h))
-    nc = 17
+    # Derive the class count from the engine output instead of assuming the
+    # old 16-class benchmark. This is important for SIAV2 (person/head).
+    nc = int(preds[0][2].max()) + 1 if preds and len(preds[0][2]) else 0
+    label_classes = {int(row[0]) for rows in gt for row in rows}
+    if label_classes:
+        nc = max(nc, max(label_classes) + 1)
     ap_all, tp_all, fp_all, npos = [], [], [], 0
     for thr in ious:
         aps = []
@@ -203,13 +217,18 @@ def main():
     ap.add_argument('--images', required=True)
     ap.add_argument('--labels', required=True)
     ap.add_argument('--size', type=int, default=640)
+    ap.add_argument('--limit', type=int, default=0, help='evaluate only the first N images; 0 means all')
     ap.add_argument('--conf', type=float, default=0.001)
     ap.add_argument('--nms-iou', type=float, default=0.65)
+    ap.add_argument('--max-candidates', type=int, default=3000)
     ap.add_argument('--out', required=True)
     args = ap.parse_args()
     image_paths = sorted([p for p in Path(args.images).rglob('*') if p.suffix.lower() in {'.jpg', '.jpeg', '.png', '.bmp'}])
+    if args.limit > 0:
+        image_paths = image_paths[:args.limit]
     engine = Engine(args.engine)
-    preds, times = collect_predictions(engine, image_paths, args.conf, args.nms_iou, args.size)
+    preds, times = collect_predictions(engine, image_paths, args.conf, args.nms_iou, args.size,
+                                       args.max_candidates)
     result = metrics(image_paths, preds, Path(args.labels))
     result.update({'engine': args.engine, 'images': len(image_paths),
                    'latency_ms_mean': float(np.mean(times)),
