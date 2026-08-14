@@ -179,6 +179,17 @@ W6는 표본 품질이 더 높았지만 S10보다 약 3.4배 느렸다. 따라�
 
 현재 Z 드라이브에는 YOLOv7-L의 실제 checkpoint/정상 ONNX가 없고, 기존 `yolov7l_640` engine은 ModelOpt/NVFP4 graph parity가 확인되지 않아 YOLOv7-L 결과로 사용하지 않았다. L checkpoint를 확보하면 같은 decoded export와 Blackwell 측정 조건으로 추가해야 한다.
 
+### 7.3 D:\code\yolov7 640 export 추가 측정
+
+사용자가 제공한 `D:\code\yolov7\gop` 폴더에서 배포용 ONNX를 확인하고 Blackwell GPU 1에서 TRT 10.16.1 FP16으로 측정했다. 두 파일 모두 EfficientNMS 출력이 포함되어 있다.
+
+| 모델 | ONNX | 실제 입력 | TRT GPU median | P95 | Throughput |
+|---|---|---|---:|---:|---:|
+| YOLOv7-L export | `large-640360.onnx` | 640×384 | 1.321 ms | 1.358 ms | 736.6 qps |
+| YOLOv7-W6 export | `w6-640360.onnx` | 640×384 | 1.303 ms | 1.321 ms | 753.7 qps |
+
+따라서 이 두 export에서는 W6가 L보다 약간 빠르게 측정됐다. 다만 S10 1280, W6 1280과는 입력 크기와 graph가 다르므로 latency를 직접적인 모델 품질 비교로 해석하지 않는다. 또한 이 ONNX들은 현재 평가 데이터셋과 class mapping이 확인되지 않아 이번에는 속도 측정만 유효한 비교로 기록한다.
+
 현재 확정할 수 있는 내용:
 
 1. S10 정상 decoded export는 TRT 10.16.1/Blackwell에서 FP16 및 FP8 engine build가 가능하다.
