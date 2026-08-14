@@ -146,6 +146,24 @@ TRT FP16 S10 640/기본 해상도
 
 ## 7. 최종 판단과 다음 검증 gate
 
+### 7.1 RTX 4090 추가 측정
+
+동일한 decoded ONNX에서 RTX 4090용 engine을 별도로 build하고 GPU 0에서 측정했다. 4090 engine은 Blackwell engine을 재사용하지 않았다.
+
+| 항목 | RTX 4090 FP16 | RTX PRO 4000 Blackwell FP16 |
+|---|---:|---:|
+| Compute Capability | 8.9 | 12.0 |
+| TRT GPU median | 1.053 ms | 1.569 ms |
+| TRT GPU P95 | 1.315 ms | 1.612 ms |
+| Throughput | 894.5 qps | 622.8 qps |
+| 200장 mAP50-95 | 0.5495 | 0.5497 (동일 조건 표본) |
+
+따라서 이 S10 graph에서는 4090이 단일 stream GPU-only 추론에서 약 33% 빠르게 측정됐다. 실제 운영 속도는 preprocessing, H2D/D2H, NMS, clock/power 상태에 따라 달라지므로 이 표를 end-to-end 성능으로 해석하면 안 된다.
+
+RTX 4090에서 `--fp8`도 시도했지만 TensorRT 10.16.1 build log에 `Unsupported data type FP8`이 반복됐다. build 명령은 종료 성공했으나 FP8 layer를 정상 실행하는 engine으로 확인되지 않았고, 생성 engine은 FP16보다 큰 49.6 MiB였다. 따라서 4090 FP8 latency/품질 수치는 유효한 FP8 비교로 기록하지 않는다.
+
+4090 engine은 builder optimization level 3, Blackwell 기준 engine은 level 5로 생성되어 build tactic 조건이 완전히 같지는 않다. GPU 비교는 동일 ONNX와 동일 inference command의 참고값으로 사용한다.
+
 현재 확정할 수 있는 내용:
 
 1. S10 정상 decoded export는 TRT 10.16.1/Blackwell에서 FP16 및 FP8 engine build가 가능하다.
