@@ -164,6 +164,21 @@ RTX 4090에서 `--fp8`도 시도했지만 TensorRT 10.16.1 build log에 `Unsuppo
 
 4090 engine은 builder optimization level 3, Blackwell 기준 engine은 level 5로 생성되어 build tactic 조건이 완전히 같지는 않다. GPU 비교는 동일 ONNX와 동일 inference command의 참고값으로 사용한다.
 
+### 7.2 W6 추가 측정
+
+프로젝트에 존재하는 `runs/crowdhuman_train/w6_crowdhuman_teacher2/weights/best.pt`를 decoded ONNX로 export한 뒤 Blackwell GPU 1에서 TRT 10.16.1 FP16으로 측정했다. 이 checkpoint는 순수 COCO pretrained weight가 아니라 `person/head` CrowdHuman 학습 checkpoint다.
+
+| 항목 | S10 FP16 | W6 FP16 |
+|---|---:|---:|
+| TRT GPU median | 1.569 ms | 5.350 ms |
+| TRT GPU P95 | 1.612 ms | 5.558 ms |
+| Throughput | 622.8 qps | 184.1 qps |
+| 200장 mAP50-95 | 0.5497 | 0.5976 |
+
+W6는 표본 품질이 더 높았지만 S10보다 약 3.4배 느렸다. 따라서 W6는 품질 우선의 고해상도 fallback 후보이고, 실시간 1차 검출기는 S10이 적합하다. 200장 품질 수치는 전체 validation 대체가 아닌 동일 조건의 빠른 비교값이다.
+
+현재 Z 드라이브에는 YOLOv7-L의 실제 checkpoint/정상 ONNX가 없고, 기존 `yolov7l_640` engine은 ModelOpt/NVFP4 graph parity가 확인되지 않아 YOLOv7-L 결과로 사용하지 않았다. L checkpoint를 확보하면 같은 decoded export와 Blackwell 측정 조건으로 추가해야 한다.
+
 현재 확정할 수 있는 내용:
 
 1. S10 정상 decoded export는 TRT 10.16.1/Blackwell에서 FP16 및 FP8 engine build가 가능하다.
